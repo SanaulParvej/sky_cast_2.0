@@ -1,432 +1,588 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:geolocator/geolocator.dart'; // Import geolocator package
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'weather_controller.dart';
+import 'constants/app_constants.dart';
+import 'utils/app_utils.dart';
+import 'widgets/custom_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  _HomeScreenState createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  // Your actual OpenWeatherMap API key
-  final String _apiKey = 'e2082ee185cdd39a3b380b4a571acf99';
-
-  // State variables to hold weather data
-  bool _isLoading = true;
-  String _location = 'Loading...';
-  String _date = '';
-  String _time = '';
-  double _temperature = 0.0;
-  String _weatherDescription = '';
-  String _weatherMain = '';
-  double _windSpeed = 0.0;
-  double _humidity = 0.0;
-  double _pressure = 0.0;
-  double _maxTemp = 0.0;
-  double _minTemp = 0.0;
-  String _error = '';
-
-  // Controller for the search text field
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+  final WeatherController weatherController = Get.put(WeatherController());
   final TextEditingController _searchController = TextEditingController();
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _getCurrentLocation(); // Initial data load for current location
+    _animationController = AnimationController(
+      duration: AppConstants.animationDurationLong,
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+    _animationController.forward();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
-  // Function to get current location and fetch weather
-  Future<void> _getCurrentLocation() async {
-    setState(() {
-      _isLoading = true;
-      _error = '';
-    });
-
-    try {
-      // Check for location service and permission
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        setState(() {
-          _error = 'Location services are disabled.';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            _error = 'Location permissions are denied.';
-            _isLoading = false;
-          });
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          _error = 'Location permissions are permanently denied, we cannot request permissions.';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Get current position
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-
-      // Fetch weather using the coordinates
-      _fetchWeatherData(
-        lat: position.latitude.toString(),
-        lon: position.longitude.toString(),
-      );
-
-    } catch (e) {
-      setState(() {
-        _error = 'Error getting location: ${e.toString()}';
-        _isLoading = false;
-      });
-      print('Location Error: $e');
+  void _searchWeather() {
+    if (_searchController.text.trim().isNotEmpty) {
+      weatherController.getWeatherByCity(_searchController.text.trim());
+      _searchController.clear();
     }
   }
 
-  // Function to fetch weather data from API (by city name or coordinates)
-  Future<void> _fetchWeatherData({String? city, String? lat, String? lon}) async {
-    setState(() {
-      _isLoading = true;
-      _error = '';
-    });
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: AppConstants.backgroundGradient,
+        ),
+        child: SafeArea(
+          child: Obx(() {
+            if (weatherController.isInitialLoading) {
+              return const LoadingWidget(
+                message: 'Loading weather data...',
+                color: AppConstants.primaryColor,
+              );
+            }
 
-    String url;
-    if (city != null) {
-      url = 'https://api.openweathermap.org/data/2.5/weather?q=$city&appid=$_apiKey&units=metric';
-    } else if (lat != null && lon != null) {
-      url = 'https://api.openweathermap.org/data/2.5/weather?lat=$lat&lon=$lon&appid=$_apiKey&units=metric';
-    } else {
-      setState(() {
-        _error = 'No location provided.';
-        _isLoading = false;
-      });
-      return;
-    }
+            if (weatherController.hasError) {
+              return CustomErrorWidget(
+                message: weatherController.errorMessage.value,
+                onRetry: () => weatherController.getCurrentLocationWeather(),
+              );
+            }
 
-    try {
-      final response = await http.get(Uri.parse(url));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final now = DateTime.now();
-
-        setState(() {
-          _location = data['name'] + ', ' + data['sys']['country'];
-          _date = _formatDate(now);
-          _time = _formatTime(now);
-          _temperature = data['main']['temp'];
-          _weatherMain = data['weather'][0]['main'];
-          _weatherDescription = data['weather'][0]['description'];
-          _windSpeed = data['wind']['speed'];
-          _humidity = data['main']['humidity'].toDouble();
-          _pressure = data['main']['pressure'].toDouble();
-          _maxTemp = data['main']['temp_max'];
-          _minTemp = data['main']['temp_min'];
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _location = 'City not found';
-          _isLoading = false;
-        });
-        print('Failed to load weather data: ${response.statusCode}');
-      }
-    } catch (e) {
-      setState(() {
-        _error = 'Error fetching data: ${e.toString()}';
-        _isLoading = false;
-      });
-      print('Error: $e');
-    }
-  }
-
-  // Helper functions for date and time formatting
-  String _formatDate(DateTime date) {
-    return '${_getWeekday(date.weekday)}, ${date.day} ${_getMonth(date.month)} ${date.year}';
-  }
-
-  String _formatTime(DateTime time) {
-    String hour = time.hour.toString().padLeft(2, '0');
-    String minute = time.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
-
-  String _getWeekday(int weekday) {
-    switch (weekday) {
-      case 1: return 'Monday';
-      case 2: return 'Tuesday';
-      case 3: return 'Wednesday';
-      case 4: return 'Thursday';
-      case 5: return 'Friday';
-      case 6: return 'Saturday';
-      case 7: return 'Sunday';
-      default: return '';
-    }
-  }
-
-  String _getMonth(int month) {
-    switch (month) {
-      case 1: return 'January';
-      case 2: return 'February';
-      case 3: return 'March';
-      case 4: return 'April';
-      case 5: return 'May';
-      case 6: return 'June';
-      case 7: return 'July';
-      case 8: return 'August';
-      case 9: return 'September';
-      case 10: return 'October';
-      case 11: return 'November';
-      case 12: return 'December';
-      default: return '';
-    }
-  }
-
-  // Helper function to build a single detail card
-  Widget _buildDetailCard(IconData icon, String value, String label) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 2,
-            blurRadius: 5,
-            offset: const Offset(0, 3),
-          ),
-        ],
+            return RefreshIndicator(
+              onRefresh: weatherController.refreshWeather,
+              color: AppConstants.primaryColor,
+              backgroundColor: AppConstants.surfaceColor,
+              child: Stack(
+                children: [
+                  SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildAppBar(),
+                          _buildSearchBar(),
+                          if (weatherController.hasWeather) ...[
+                            _buildMainWeatherCard(),
+                            _buildWeatherDetails(),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Loading overlay when searching
+                  Obx(() {
+                    if (weatherController.isLoading.value &&
+                        weatherController.hasWeather) {
+                      return Container(
+                        color: Colors.black.withOpacity(0.3),
+                        child: const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 3,
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'Searching for weather data...',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
+                ],
+              ),
+            );
+          }),
+        ),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    );
+  }
+
+  Widget _buildAppBar() {
+    return Container(
+      padding: const EdgeInsets.all(AppConstants.paddingMedium),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(icon, size: 30, color: const Color(0xFFB3E0E6)),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) =>
+                    AppConstants.primaryGradient.createShader(bounds),
+                child: const Text(
+                  AppConstants.appName,
+                  style: TextStyle(
+                    fontSize: AppConstants.fontSizeXXLarge,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const Text(
+                'Your Weather Companion',
+                style: TextStyle(
+                  fontSize: AppConstants.fontSizeSmall,
+                  color: AppConstants.textSecondaryColor,
+                ),
+              ),
+            ],
           ),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.black54,
-            ),
+          Row(
+            children: [
+              _buildActionButton(
+                icon: Icons.my_location,
+                onPressed: weatherController.getCurrentLocationWeather,
+                tooltip: 'Current Location',
+              ),
+              const SizedBox(width: 8),
+              _buildActionButton(
+                icon: Icons.refresh,
+                onPressed: weatherController.refreshWeather,
+                tooltip: 'Refresh',
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F8), // Light greyish-blue background
-      appBar: AppBar(
-        title: const Text(
-          'Sky_Cast',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            onPressed: _getCurrentLocation, // Call the new function
-            icon: const Icon(Icons.my_location, color: Colors.black),
-          ),
-        ],
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppConstants.glassGradient,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppConstants.glassBorderColor, width: 1),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFB3E0E6)))
-          : SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Column(
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, color: AppConstants.textPrimaryColor),
+        tooltip: tooltip,
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return CustomTextField(
+      controller: _searchController,
+      hintText: 'Search for a city...',
+      prefixIcon: Icons.search,
+      onSubmitted: (_) => _searchWeather(),
+      suffixIcon: Obx(() {
+        if (weatherController.isLoading.value &&
+            _searchController.text.isNotEmpty) {
+          return Container(
+            margin: const EdgeInsets.all(8),
+            width: 24,
+            height: 24,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          );
+        } else {
+          return Container(
+            margin: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              gradient: AppConstants.primaryGradient,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              onPressed: _searchWeather,
+              icon: const Icon(
+                Icons.arrow_forward,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+          );
+        }
+      }),
+    );
+  }
+
+  Widget _buildMainWeatherCard() {
+    final weather = weatherController.currentWeather.value!;
+
+    return CustomCard(
+      glassMorphism: true,
+      margin: const EdgeInsets.all(AppConstants.paddingMedium),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Date and Time
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Search Bar
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 16.0),
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.1),
-                      spreadRadius: 2,
-                      blurRadius: 5,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
+              Text(
+                AppDateUtils.formatDate(DateTime.now()),
+                style: const TextStyle(
+                  fontSize: AppConstants.fontSizeMedium,
+                  color: AppConstants.textPrimaryColor,
+                  fontWeight: FontWeight.w500,
                 ),
-                child: TextField(
-                  controller: _searchController,
-                  onSubmitted: (city) {
-                    if (city.isNotEmpty) {
-                      _fetchWeatherData(city: city);
-                    }
-                  },
-                  decoration: const InputDecoration(
-                    icon: Icon(Icons.search, color: Colors.grey),
-                    hintText: 'Search',
-                    border: InputBorder.none,
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  gradient: AppConstants.primaryGradient,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  AppDateUtils.formatTime(DateTime.now()),
+                  style: const TextStyle(
+                    fontSize: AppConstants.fontSizeSmall,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
+            ],
+          ),
 
-              if (_error.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    _error,
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
+          const SizedBox(height: AppConstants.paddingMedium),
+
+          // Location with Icon
+          Row(
+            children: [
+              Icon(
+                Icons.location_on,
+                color: AppConstants.accentColor,
+                size: AppConstants.iconSizeSmall,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  weather.fullLocation,
+                  style: const TextStyle(
+                    fontSize: AppConstants.fontSizeLarge,
+                    fontWeight: FontWeight.w600,
+                    color: AppConstants.textPrimaryColor,
                   ),
                 ),
+              ),
+            ],
+          ),
 
-              // Main Weather Card
-              Container(
-                padding: const EdgeInsets.all(24.0),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFB3E0E6), // A light bluish-green
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      spreadRadius: 3,
-                      blurRadius: 7,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
+          const SizedBox(height: AppConstants.paddingLarge),
+
+          // Temperature and Weather Icon
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _date,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Colors.black,
-                      ),
-                    ),
-                    Text(
-                      _time,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.black54,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _location,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Center(
+                    ShaderMask(
+                      shaderCallback: (bounds) =>
+                          AppConstants.temperatureGradient.createShader(bounds),
                       child: Text(
-                        '${_temperature.toStringAsFixed(1)}°C',
+                        weather.temperatureString,
                         style: const TextStyle(
-                          fontSize: 60,
+                          fontSize: AppConstants.fontSizeTemperature,
                           fontWeight: FontWeight.bold,
-                          color: Colors.black,
+                          color: Colors.white,
                         ),
                       ),
                     ),
-                    Center(
-                      child: Text(
-                        _weatherMain,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black,
-                        ),
+                    Text(
+                      weather.weatherMain,
+                      style: const TextStyle(
+                        fontSize: AppConstants.fontSizeXLarge,
+                        fontWeight: FontWeight.w600,
+                        color: AppConstants.textPrimaryColor,
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    const Center(
-                      child: Icon(
-                        Icons.cloud,
-                        size: 80,
-                        color: Colors.white,
+                    Text(
+                      weather.weatherDescription,
+                      style: const TextStyle(
+                        fontSize: AppConstants.fontSizeMedium,
+                        color: AppConstants.textSecondaryColor,
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Center(
+                  ],
+                ),
+              ),
+              Expanded(
+                flex: 1,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: AppConstants.primaryGradient,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppConstants.primaryColor.withOpacity(0.3),
+                            blurRadius: 20,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
                       child: Text(
-                        _weatherDescription,
+                        WeatherUtils.getWeatherEmoji(weather.weatherMain),
+                        style: const TextStyle(fontSize: 50),
+                      ),
+                    ),
+                    const SizedBox(height: AppConstants.paddingSmall),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppConstants.surfaceColor.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Feels like ${weather.feelsLikeString}',
                         style: const TextStyle(
-                          fontSize: 18,
-                          color: Colors.black87,
+                          fontSize: AppConstants.fontSizeSmall,
+                          color: AppConstants.textSecondaryColor,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-              const SizedBox(height: 24),
+  Widget _buildWeatherDetails() {
+    final weather = weatherController.currentWeather.value!;
 
-              // Details Section Title
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Details',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.paddingMedium,
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: AppConstants.primaryGradient,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.analytics_outlined,
+                  color: Colors.white,
+                  size: 20,
                 ),
               ),
-              const SizedBox(height: 16),
-              // Details Cards
-              GridView.count(
-                crossAxisCount: 3,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                children: [
-                  _buildDetailCard(Icons.air, '${_windSpeed.toStringAsFixed(1)} km/h', 'Wind'),
-                  _buildDetailCard(Icons.thermostat_outlined, '${_maxTemp.toStringAsFixed(1)} °C', 'Max'),
-                  _buildDetailCard(Icons.thermostat_outlined, '${_minTemp.toStringAsFixed(1)} °C', 'Min'),
-                  _buildDetailCard(Icons.opacity, '${_humidity.toStringAsFixed(0)} %', 'Humidity'),
-                  _buildDetailCard(Icons.compress, '${_pressure.toStringAsFixed(0)} hPa', 'Pressure'),
-                  //_buildDetailCard(Icons.water_level, 'N/A', 'Sea-Level'),
-                ],
+              const SizedBox(width: 12),
+              const Text(
+                'Weather Details',
+                style: TextStyle(
+                  fontSize: AppConstants.fontSizeXLarge,
+                  fontWeight: FontWeight.bold,
+                  color: AppConstants.textPrimaryColor,
+                ),
               ),
             ],
           ),
         ),
-      ),
+
+        const SizedBox(height: AppConstants.paddingMedium),
+
+        // Weather Details Grid
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.paddingMedium,
+          ),
+          child: GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: AppConstants.paddingMedium,
+            crossAxisSpacing: AppConstants.paddingMedium,
+            childAspectRatio: 1.2,
+            children: [
+              WeatherDetailCard(
+                icon: Icons.air,
+                value: weather.windSpeedString,
+                label: 'Wind Speed',
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF06B6D4), Color(0xFF0891B2)],
+                ),
+              ),
+              WeatherDetailCard(
+                icon: Icons.opacity,
+                value: weather.humidityString,
+                label: 'Humidity',
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                ),
+              ),
+              WeatherDetailCard(
+                icon: Icons.compress,
+                value: weather.pressureString,
+                label: 'Pressure',
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+                ),
+              ),
+              WeatherDetailCard(
+                icon: Icons.visibility,
+                value: weather.visibilityString,
+                label: 'Visibility',
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF10B981), Color(0xFF059669)],
+                ),
+              ),
+              WeatherDetailCard(
+                icon: Icons.thermostat_outlined,
+                value: weather.maxTempString,
+                label: 'Max Temp',
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFF59E0B), Color(0xFFD97706)],
+                ),
+              ),
+              WeatherDetailCard(
+                icon: Icons.thermostat_outlined,
+                value: weather.minTempString,
+                label: 'Min Temp',
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: AppConstants.paddingLarge),
+
+        // Sunrise/Sunset Info
+        CustomCard(
+          glassMorphism: true,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSunTimeColumn(
+                icon: Icons.wb_sunny_outlined,
+                iconColor: const Color(0xFFF59E0B),
+                label: 'Sunrise',
+                time: AppDateUtils.formatSunriseSunset(weather.sunrise),
+              ),
+              Container(
+                width: 1,
+                height: 60,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppConstants.textSecondaryColor.withOpacity(0.3),
+                      AppConstants.textSecondaryColor.withOpacity(0.1),
+                    ],
+                  ),
+                ),
+              ),
+              _buildSunTimeColumn(
+                icon: Icons.nights_stay_outlined,
+                iconColor: const Color(0xFF6366F1),
+                label: 'Sunset',
+                time: AppDateUtils.formatSunriseSunset(weather.sunset),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: AppConstants.paddingLarge),
+      ],
+    );
+  }
+
+  Widget _buildSunTimeColumn({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String time,
+  }) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: iconColor.withOpacity(0.1),
+            shape: BoxShape.circle,
+            border: Border.all(color: iconColor.withOpacity(0.3), width: 2),
+          ),
+          child: Icon(
+            icon,
+            color: iconColor,
+            size: AppConstants.iconSizeMedium,
+          ),
+        ),
+        const SizedBox(height: AppConstants.paddingSmall),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: AppConstants.fontSizeSmall,
+            color: AppConstants.textSecondaryColor,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          time,
+          style: const TextStyle(
+            fontSize: AppConstants.fontSizeLarge,
+            fontWeight: FontWeight.bold,
+            color: AppConstants.textPrimaryColor,
+          ),
+        ),
+      ],
     );
   }
 }
