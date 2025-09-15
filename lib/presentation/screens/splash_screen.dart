@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'app_routes.dart';
-import 'core/constants/app_colors.dart';
-import 'core/constants/app_strings.dart';
-import 'core/constants/app_dimensions.dart';
-import 'core/constants/app_gradients.dart';
-import 'core/constants/app_typography.dart';
+import '../../core/routes/app_routes.dart';
+import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_strings.dart';
+import '../../core/constants/app_dimensions.dart';
+import '../../core/constants/app_gradients.dart';
+import '../../core/constants/app_typography.dart';
 import 'dart:math' as math;
 
 class SplashScreen extends StatefulWidget {

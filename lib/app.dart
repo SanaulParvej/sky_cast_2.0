@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:sky_cast/splash_screen.dart';
+import 'presentation/screens/splash_screen.dart';
 import 'presentation/screens/modern_home_screen.dart';
-import 'app_routes.dart';
+import 'core/routes/app_routes.dart';
 import 'constants/app_constants.dart';
 
 class SkyCastApp extends StatelessWidget {

@@ -1,7 +1,7 @@
 import 'package:get/get.dart';
-import 'models/weather_model.dart';
-import 'services/weather_service.dart';
-import 'services/location_service.dart';
+import '../../models/weather_model.dart';
+import '../../services/weather_service.dart';
+import '../../services/location_service.dart';
 
 class WeatherController extends GetxController {
   // Observable variables
