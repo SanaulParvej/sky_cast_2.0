@@ -1,16 +1,34 @@
-# sky_cast
+# Sky Cast
 
-A new Flutter project.
+A weather forecasting application built with Flutter.
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+This project is a weather forecasting application built with Flutter. It provides current weather information, forecasts, and location-based services.
 
-A few resources to get you started if this is your first Flutter project:
+## Project Optimization
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+This project has been optimized for publication with the following changes:
+- Removed unused code and files
+- Optimized dependencies in pubspec.yaml
+- Verified app icon configuration
+- Cleaned up project structure
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+For detailed information about the optimizations performed, see [PROJECT_OPTIMIZATION_SUMMARY.md](PROJECT_OPTIMIZATION_SUMMARY.md).
+
+## Setting up the App Icon
+
+To properly set up your app icon:
+
+1. Create a high-resolution app icon (at least 1024x1024 pixels) in PNG format
+2. Save it as `assets/icon/app_icon.png`
+3. Run the following commands:
+
+```bash
+flutter pub get
+flutter pub run flutter_launcher_icons:main
+```
+
+For detailed requirements and best practices for app icons, see [APP_ICON_REQUIREMENTS.md](APP_ICON_REQUIREMENTS.md).
+
+This will automatically generate all required icon sizes for both Android and iOS platforms.
